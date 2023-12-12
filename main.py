@@ -7,6 +7,3 @@ thread.start()
 sleep(10)
 
 thread.stop()
-orders = thread.get_data()
-for order in orders:
-    print(order.UnitPriceSilver, order.EnchantmentLevel, order.Tier)

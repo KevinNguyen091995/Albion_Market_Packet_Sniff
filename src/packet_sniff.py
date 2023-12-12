@@ -25,6 +25,7 @@ class datapoint:
     def __init__(self, data):
         # data attribute
         self.data = data[:]
+        
         # correct silver prices
         data[1] //= 10000
         data[2] //= 10000
@@ -68,6 +69,7 @@ class sniffer_data:
 
     def __str__(self):
         parsed = [{HEADERS[j]: attribute for j, attribute in enumerate(i.data)} for i in self.parsed]
+        print(json.dumps({"logs": self.logs, "parsed": parsed, "malformed": self.malformed}))
         return json.dumps({"logs": self.logs, "parsed": parsed, "malformed": self.malformed})
 
 
@@ -135,16 +137,7 @@ class sniffing_thread(threading.Thread):
             
             # set last parsed to false
             self.last_parsed = False
-
-            orders = self.get_data()
-
-            if orders == []:
-                pass
-
-            else:
-                for order in orders:
-                    print(order.UnitPriceSilver, order.EnchantmentLevel, order.Tier)
-
+            
 
         if not self.last_parsed:
             self.parse_data()
