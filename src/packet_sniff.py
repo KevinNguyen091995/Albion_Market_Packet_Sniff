@@ -2,13 +2,16 @@ import socket
 import json
 import threading
 import platform
+import keyboard
+import requests
+import time
 from datetime import datetime
 
 PROBLEMS = ["'", "$", "QH", "?8", "H@", "ZP"]
-HEADERS = ["Id", "UnitPriceSilver", "TotalPriceSilver", "Amount", "Tier", "IsFinished",
+HEADERS = ["Id", "unitprice", "TotalPriceSilver", "Amount", "tier", "IsFinished",
            "AuctionType", "HasBuyerFetched", "HasSellerFetched", "SellerCharacterId",
-           "SellerName", "BuyerCharacterId", "BuyerName", "ItemTypeId", "ItemGroupTypeId",
-           "EnchantmentLevel", "QualityLevel", "Expires", "ReferenceId"]
+           "SellerName", "BuyerCharacterId", "BuyerName", "unique_name", "itemgroup",
+           "enchantment", "quality", "Expires", "ReferenceId"]
 
 
 def local_ip():
@@ -51,7 +54,6 @@ class datapoint:
         self.QualityLevel = data[16]
         self.Expires = data[17]
         self.ReferenceId = data[18]
-
 
 class sniffer_data:
     """ Organized sniffed market data"""
@@ -104,6 +106,10 @@ class sniffing_thread(threading.Thread):
         # set recording to True
         self.recording = True
 
+        # Create a thread to listen for the tilde key press
+        tilde_listener = threading.Thread(target=self.stop_on_tilde_key_press)
+        tilde_listener.start()
+
         # while the thread is set to recording, sniff and record data
         while self.recording:
 
@@ -132,12 +138,31 @@ class sniffing_thread(threading.Thread):
                     self.logs[-1] += chunk
 
             if self.logs and self.logs[0] != "":
-                data_test = json.loads(self.logs[0])
-                data_test['UnitPriceSilver'] //= 10000
-                data_test['TotalPriceSilver'] //= 10000
+                market_data = json.loads(self.logs[0])
+                market_data['UnitPriceSilver'] //= 10000
+                market_data['TotalPriceSilver'] //= 10000
+                self.post_to_database(market_data)
 
             self.logs = list()
 
-    def stop(self):
-        """ Stop the sniffing thread"""
-        self.recording = False
+    def stop_on_tilde_key_press(self):
+        while True:
+            # Check if the tilde key (~) is pressed
+            if keyboard.is_pressed('~'):
+                self.recording = False
+                print("Tilde key pressed. Stopping recording.")
+                break
+
+    def post_to_database(self, json_data):
+        # Replace the following URL with the endpoint of your database API
+        database_url = "http://127.0.0.1:8000/api/prices/"
+        
+        # Send a POST request with JSON data to the database
+        response = requests.post(database_url, json=json_data)
+
+        # Check if the request was successful (status code 200)
+        if response.status_code == 200 or response.status_code == 201:
+            print("Data posted to the database successfully.")
+        else:
+            print(f"Failed to post data to the database. Status code: {response.status_code}")
+            print("Response content:", response.text)
