@@ -56,10 +56,8 @@ class datapoint:
 class sniffer_data:
     """ Organized sniffed market data"""
 
-    def __init__(self, logs, parsed, malformed):
+    def __init__(self, logs, parsed):
         self.logs = logs[:]
-        self.parsed = parsed[:]
-        self.malformed = malformed[:]
 
     def __getitem__(self, i):
         return self.parsed[i]
@@ -69,8 +67,7 @@ class sniffer_data:
 
     def __str__(self):
         parsed = [{HEADERS[j]: attribute for j, attribute in enumerate(i.data)} for i in self.parsed]
-        print(json.dumps({"logs": self.logs, "parsed": parsed, "malformed": self.malformed}))
-        return json.dumps({"logs": self.logs, "parsed": parsed, "malformed": self.malformed})
+        return json.dumps({"logs": self.logs})
 
 
 class sniffing_thread(threading.Thread):
@@ -86,10 +83,8 @@ class sniffing_thread(threading.Thread):
         # define thread attributes
         self.n = 0
         self.e = 0
-        self.parsed = []
-        self.malformed = []
+        self.order_data = ""
         self.recording = False
-        self.last_parsed = True
         # log list with placeholder entry
         self.logs = [""]
 
@@ -131,45 +126,17 @@ class sniffing_thread(threading.Thread):
                 # if this chunk is the start of a new piece of market information, add a new entry to the log
                 if "{" in chunk[:4]:
                     self.logs.append(chunk[chunk.find("{"):])
+                    
                 # otherwise, this chunk is assumed to be a continuation of the last chunk and is simply concatenated to the end
                 elif self.logs:
                     self.logs[-1] += chunk
-            
-            # set last parsed to false
-            self.last_parsed = False
-            
 
-        if not self.last_parsed:
-            self.parse_data()
+            if self.logs and self.logs[0] != "":
+                data_test = json.loads(self.logs[0])
+                data_test['UnitPriceSilver'] //= 10000
+                data_test['TotalPriceSilver'] //= 10000
 
-
-    def parse_data(self):
-        """ Parse the data currently collected by the thread"""
-        self.parsed = []
-        self.malformed = []
-        if not self.logs[0]:
-            self.logs.pop(0)
-        for i, log in enumerate(self.logs):
-            try:
-                self.parsed.append(datapoint(list(json.loads(log).values())))
-            except json.decoder.JSONDecodeError:
-                self.malformed.append(self.logs[i])
-        self.last_parsed = True
-
-
-    def get_data(self):
-        """ Get the latest data from sniffing thread"""
-        # if no logs have been recorded
-        if self.logs == [""]:
-            return []
-
-        # parse logs, record malformed logs, and count total logs and malformed logs
-        if not self.last_parsed:
-            self.parse_data()
-        
-        # return parsed data
-        return sniffer_data(self.logs, self.parsed, self.malformed)
-
+            self.logs = list()
 
     def stop(self):
         """ Stop the sniffing thread"""
