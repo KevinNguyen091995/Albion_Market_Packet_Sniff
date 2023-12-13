@@ -1,18 +1,12 @@
 import socket
 import json
+import re
 import threading
 import platform
 import keyboard
 import requests
-import time
-from datetime import datetime
 
 PROBLEMS = ["'", "$", "QH", "?8", "H@", "ZP"]
-HEADERS = ["Id", "unitprice", "TotalPriceSilver", "Amount", "tier", "IsFinished",
-           "AuctionType", "HasBuyerFetched", "HasSellerFetched", "SellerCharacterId",
-           "SellerName", "BuyerCharacterId", "BuyerName", "unique_name", "itemgroup",
-           "enchantment", "quality", "Expires", "ReferenceId"]
-
 
 def local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -20,57 +14,6 @@ def local_ip():
     ip = s.getsockname()[0]
     s.close()
     return ip
-
-
-class datapoint:
-    """ Single market datapoint including all available data from the game's api"""
-
-    def __init__(self, data):
-        # data attribute
-        self.data = data[:]
-        
-        # correct silver prices
-        data[1] //= 10000
-        data[2] //= 10000
-        # convert expire date to datetime object
-        data[17] = datetime.strptime(data[17][0:16], "%Y-%m-%dT%H:%M")
-        # set attributes to data indexes
-        self.Id = data[0]
-        self.UnitPriceSilver = data[1]
-        self.TotalPriceSilver = data[2]
-        self.Amount = data[3]
-        self.Tier = data[4]
-        self.IsFinished = data[5]
-        self.AuctionType = data[6]
-        self.HasBuyerFetched = data[7]
-        self.HasSellerFetched = data[8]
-        self.SellerCharacterId = data[9]
-        self.SellerName = data[10]
-        self.BuyerCharacterId = data[11]
-        self.BuyerName = data[12]
-        self.ItemTypeId = data[13]
-        self.ItemGroupTypeId = data[14]
-        self.EnchantmentLevel = data[15]
-        self.QualityLevel = data[16]
-        self.Expires = data[17]
-        self.ReferenceId = data[18]
-
-class sniffer_data:
-    """ Organized sniffed market data"""
-
-    def __init__(self, logs, parsed):
-        self.logs = logs[:]
-
-    def __getitem__(self, i):
-        return self.parsed[i]
-
-    def __len__(self):
-        return len(self.parsed)
-
-    def __str__(self):
-        parsed = [{HEADERS[j]: attribute for j, attribute in enumerate(i.data)} for i in self.parsed]
-        return json.dumps({"logs": self.logs})
-
 
 class sniffing_thread(threading.Thread):
     """ Sniffing thread class"""
@@ -86,6 +29,7 @@ class sniffing_thread(threading.Thread):
         self.n = 0
         self.e = 0
         self.order_data = ""
+        self.location = ""
         self.recording = False
         # log list with placeholder entry
         self.logs = [""]
@@ -102,7 +46,6 @@ class sniffing_thread(threading.Thread):
 
 
     def run(self):
-
         # set recording to True
         self.recording = True
 
@@ -127,6 +70,12 @@ class sniffing_thread(threading.Thread):
             # partition received cleaned data into chunks
             chunks = [s[3:] for s in data.split("\\") if len(s) > 5 and ("Silver" in s or "ReferenceId" in s)]
 
+            for s in data.split("\\"):
+                match = re.findall(r'@([^@]+)@', s)
+                
+                if len(s) > 5 and match:
+                    print(match)
+
             # processed chunks
             for chunk in chunks:
                 # if this chunk is the start of a new piece of market information, add a new entry to the log
@@ -137,11 +86,11 @@ class sniffing_thread(threading.Thread):
                 elif self.logs:
                     self.logs[-1] += chunk
 
-            if self.logs and self.logs[0] != "":
-                market_data = json.loads(self.logs[0])
-                market_data['UnitPriceSilver'] //= 10000
-                market_data['TotalPriceSilver'] //= 10000
-                self.post_to_database(market_data)
+            # if self.logs and self.logs[0] != "":
+            #     market_data = json.loads(self.logs[0])
+            #     market_data['UnitPriceSilver'] //= 10000
+            #     market_data['TotalPriceSilver'] //= 10000
+            #     self.post_to_database(market_data)
 
             self.logs = list()
 
