@@ -6,6 +6,8 @@ import platform
 import keyboard
 import requests
 import time
+from datetime import datetime
+from src.logger import Logger
 
 PROBLEMS = ["'", "$", "QH", "?8", "H@", "ZP"]
 city_mapping = {
@@ -1322,7 +1324,7 @@ def local_ip():
     s.close()
     return ip
 
-class sniffing_thread(threading.Thread):
+class albion_sniff():
     """ Sniffing thread class"""
 
     def __init__(self, problems=PROBLEMS):
@@ -1332,6 +1334,9 @@ class sniffing_thread(threading.Thread):
 
         # set problems list
         self.problems = problems
+        self.data = None
+        self.logs = list()
+        self.logger = Logger()
 
         # define thread attributes
         self.n = 0
@@ -1339,9 +1344,12 @@ class sniffing_thread(threading.Thread):
         self.order_data = ""
         self.location = ""
         self.recording = False
+        self.market_location = None
         self.current_location = None
         self.previous_location = None
         self.visited = False
+        self.found_data = False
+        self.dupe_check = set()
         # log list with placeholder entry
         self.logs = [""]
 
@@ -1355,76 +1363,95 @@ class sniffing_thread(threading.Thread):
             self.sniffer.bind((local_ip(), 0))
             self.sniffer.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
 
+    def run_location(self):
+        while self.recording:
+            try:
+                if self.data:
+                    for s in self.data.split("\\"):
+                        match = re.findall(r'^x04(\d{4})$', s)
 
-    def run(self):
-        # set recording to True
+                        if len(s) > 6 and match and city_mapping.get(match[0]):
+                            if self.current_location != city_mapping.get(match[0]) and not self.visited:
+                                self.previous_location = self.current_location
+                                self.current_location = city_mapping.get(match[0])
+                                self.visited = True
+
+                            elif 'Market' in city_mapping.get(match[0]):
+                                print(f"Successfully Grab Market Location : {city_mapping.get(match[0])}")
+                                self.market_location = {city_mapping.get(match[0])}
+                                time.sleep(2.5)
+
+                            elif city_mapping.get(match[0]):
+                                self.visited = False
+                                
+            except Exception as e:
+                self.logger.log_message(f"{datetime.now()} - Location Error : {e}")
+
+
+    def run_market(self):
         self.recording = True
-
-        # Create a thread to listen for the tilde key press
-        tilde_listener = threading.Thread(target=self.stop_on_tilde_key_press)
-        tilde_listener.start()
 
         # while the thread is set to recording, sniff and record data
         while self.recording:
             # wait for market data
             try:
-                data = self.sniffer.recvfrom(1440)[0]
+                self.data = self.sniffer.recvfrom(1440)[0]
             except OSError:
                 pass
 
             # remove known problematic strings from data
-            data = str(data)
+            self.data = str(self.data)
             for p in self.problems:
-                data = data.replace(p, "")
+                self.data = self.data.replace(p, "")
 
             # partition received cleaned data into chunks
-            chunks = [s[3:] for s in data.split("\\") if len(s) > 5 and ("Silver" in s or "ReferenceId" in s)]
-
-            try:
-                for s in data.split("\\"):
-                    match = re.findall(r'^x04(\d{4})$', s)
-
-                    if len(s) > 6 and match and city_mapping.get(match[0]):
-                        if self.current_location != city_mapping.get(match[0]) and not self.visited:
-                            print(f"Successfully Grab Location : {city_mapping.get(match[0])}")
-                            self.previous_location = self.current_location
-                            self.current_location = city_mapping.get(match[0])
-                            self.visited = True
-
-                        elif city_mapping.get(match[0]):
-                            self.visited = False
-
-            except Exception as e:
-                print(e)
-                        
+            chunks = [s[3:] for s in self.data.split("\\") if len(s) > 5 and ("UnitPriceSilver" in s or "ReferenceId" in s)]
 
             # processed chunks
             for chunk in chunks:
                 # if this chunk is the start of a new piece of market information, add a new entry to the log
                 if "{" in chunk[:4]:
+                    self.found_data = True
                     self.logs.append(chunk[chunk.find("{"):])
                     
                 # otherwise, this chunk is assumed to be a continuation of the last chunk and is simply concatenated to the end
                 elif self.logs:
                     self.logs[-1] += chunk
 
-            if self.logs and self.logs[0] != "":
-                if not self.current_location:
-                    print("Location not Registered, move maps to readjust")
-                
-                else:
-                    try:
-                        market_data = json.loads(self.logs[0])
+
+            if self.market_location and self.found_data:
+                try:
+                    market_data = json.loads(self.logs[0])
+                    if '@' not in market_data['ItemTypeId']:
+                        market_data['ItemTypeId'] = market_data['ItemTypeId'] + '@' + str(market_data['EnchantmentLevel'])
+                        
+                    
+                    if market_data['ItemTypeId'] + str(market_data['QualityLevel']) not in self.dupe_check:
                         market_data['UnitPriceSilver'] //= 10000
                         market_data['TotalPriceSilver'] //= 10000
-                        market_data['Location'] = self.current_location
+                        market_data['Location'] = self.market_location
                         self.post_to_database(market_data)
-                    
-                    except json.decoder.JSONDecodeError:
-                        print("JSON Decode Error")
-                        
 
+                    self.dupe_check.add(market_data['ItemTypeId'] + str(market_data['QualityLevel']))
+
+                except json.decoder.JSONDecodeError:
+                    self.logger.log_message(f"{datetime.now()} - JSON Decode Error Ignoring")
+
+            self.found_data = False
             self.logs = list()
+
+    def start_threads(self):
+        # Create threads for both run_location and run_market
+        # Create a thread to listen for the tilde key press
+        tilde_listener = threading.Thread(target=self.stop_on_tilde_key_press)
+        market_thread = threading.Thread(target=self.run_market)
+        location_thread = threading.Thread(target=self.run_location)
+
+        # Start threads
+        tilde_listener.start()
+        market_thread.start()
+        location_thread.start()
+        
 
     def stop_on_tilde_key_press(self):
         while True:
@@ -1432,6 +1459,7 @@ class sniffing_thread(threading.Thread):
             if keyboard.is_pressed('~'):
                 self.recording = False
                 print("Tilde key pressed. Stopping recording.")
+                self.logger.log_message(f"{datetime.now()} - Tilde key pressed. Stopping recording.")
                 break
 
     def post_to_database(self, json_data):
@@ -1445,5 +1473,4 @@ class sniffing_thread(threading.Thread):
         if response.status_code == 200 or response.status_code == 201:
             print("Data posted to the database successfully.")
         else:
-            print(f"Failed to post data to the database. Status code: {response.status_code}")
-            print("Response content:", response.text)
+            self.logger.log_message(f"{datetime.now()} -  Failed to post data to the database. Status code: {response.status_code}")

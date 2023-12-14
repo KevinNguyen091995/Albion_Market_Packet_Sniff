@@ -1,4 +1,4 @@
-from src.packet_sniff import sniffing_thread
+from src.packet_sniff import albion_sniff
 
-thread = sniffing_thread()
-thread.start()
+thread = albion_sniff()
+thread.start_threads()
