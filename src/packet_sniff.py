@@ -1326,6 +1326,7 @@ class sniffing_thread(threading.Thread):
     """ Sniffing thread class"""
 
     def __init__(self, problems=PROBLEMS):
+        print("Starting Sniffer")
 
         threading.Thread.__init__(self)
 
