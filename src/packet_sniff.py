@@ -5,6 +5,7 @@ import threading
 import platform
 import keyboard
 import requests
+import time
 
 PROBLEMS = ["'", "$", "QH", "?8", "H@", "ZP"]
 city_mapping = {
@@ -1364,10 +1365,9 @@ class sniffing_thread(threading.Thread):
 
         # while the thread is set to recording, sniff and record data
         while self.recording:
-
             # wait for market data
             try:
-                data = self.sniffer.recvfrom(1350)[0]
+                data = self.sniffer.recvfrom(1440)[0]
             except OSError:
                 pass
 
@@ -1379,26 +1379,23 @@ class sniffing_thread(threading.Thread):
             # partition received cleaned data into chunks
             chunks = [s[3:] for s in data.split("\\") if len(s) > 5 and ("Silver" in s or "ReferenceId" in s)]
 
-            for s in data.split("\\"):
-                match = re.findall(r'^x04(\d{4})(?![\w@])', s)
+            try:
+                for s in data.split("\\"):
+                    match = re.findall(r'^x04(\d{4})$', s)
 
-                if len(s) > 6 and match and city_mapping.get(match[0]):
-                    print(match)
-                    print(s)
-                    if self.current_location != city_mapping.get(match[0]) and not self.visited:
-                        print(f"Successfully Grab Location : {city_mapping.get(match[0])}")
-                        self.previous_location = self.current_location
-                        self.current_location = city_mapping.get(match[0])
-                        self.visited = True
+                    if len(s) > 6 and match and city_mapping.get(match[0]):
+                        if self.current_location != city_mapping.get(match[0]) and not self.visited:
+                            print(f"Successfully Grab Location : {city_mapping.get(match[0])}")
+                            self.previous_location = self.current_location
+                            self.current_location = city_mapping.get(match[0])
+                            self.visited = True
 
-                    elif city_mapping.get(match[0]):
-                        self.visited = False
+                        elif city_mapping.get(match[0]):
+                            self.visited = False
 
-                    print(self.previous_location, self.current_location)
+            except Exception as e:
+                print(e)
                         
-
-                
-
 
             # processed chunks
             for chunk in chunks:
@@ -1411,17 +1408,20 @@ class sniffing_thread(threading.Thread):
                     self.logs[-1] += chunk
 
             if self.logs and self.logs[0] != "":
-
                 if not self.current_location:
                     print("Location not Registered, move maps to readjust")
                 
                 else:
-                    market_data = json.loads(self.logs[0])
-                    market_data['UnitPriceSilver'] //= 10000
-                    market_data['TotalPriceSilver'] //= 10000
-                    market_data['Location'] = self.current_location
-                    print(json.dumps(market_data, indent=4))
-                    # self.post_to_database(market_data)
+                    try:
+                        market_data = json.loads(self.logs[0])
+                        market_data['UnitPriceSilver'] //= 10000
+                        market_data['TotalPriceSilver'] //= 10000
+                        market_data['Location'] = self.current_location
+                        self.post_to_database(market_data)
+                    
+                    except json.decoder.JSONDecodeError:
+                        print("JSON Decode Error")
+                        
 
             self.logs = list()
 
