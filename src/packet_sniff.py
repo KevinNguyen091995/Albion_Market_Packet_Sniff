@@ -1464,7 +1464,7 @@ class albion_sniff():
 
     def post_to_database(self, json_data):
         # Replace the following URL with the endpoint of your database API
-        database_url = "http://127.0.0.1:8000/api/prices/"
+        database_url = "http://http://159.89.34.98:8000/api/prices/"
         
         # Send a POST request with JSON data to the database
         response = requests.post(database_url, json=json_data)
