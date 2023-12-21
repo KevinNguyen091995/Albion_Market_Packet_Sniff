@@ -4,7 +4,7 @@
 We created something similar to the Albion Data Project. It is still currently in development, and would love your assistance as DYD members to help gather data.
 
 What it Does:
-Runs a python multiprocess software to sniff through traffic that mainly relates to the player's current location and market JSOn data
+Runs a python multiprocess software to sniff through traffic that mainly relates to the player's current location and market JSON data
 
 
 ### Requirements
@@ -47,5 +47,5 @@ If you wish to contribute to the project for those developers out there in DYD:
 
 Sinuser1 - Sinuser1@yahoo.com
 
-Website Link: [DYD Website](http://159.89.34.98:8080/)
-API Link: [DYD APIs](http://159.89.34.98:8000/)
+- Website Link: [DYD Website](http://159.89.34.98:8080/)
+- API Link: [DYD APIs](http://159.89.34.98:8000/)
